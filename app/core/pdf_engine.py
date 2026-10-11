@@ -125,3 +125,43 @@ class PDFEngine:
         finally:
             doc.close()
             new_doc.close()
+
+    @classmethod
+    def rotate_page(cls,file_path: Path, rotation_degree: int, pages: Optional[List[int]]=None, output_path:Optional[Path]=None) -> None:
+        """Rotate specific pages  or all  pages by 90,180 or 270 degrees clockwise"""
+        if rotation_degree not in [90,180,270]:
+            logger.error(f"Invalid rotaion angle requested: {rotation_degree}")
+            raise PDFOperationError(f"Rotation angle must be either 90, 180, or 270")
+
+        doc = cls._open_pdf(file_path)
+        try:
+            total_pages=len(doc)
+            target_pages=([p - 1 for p in pages ]if pages else list(range(total_pages)))
+            for p in target_pages:
+                if p<0 or p>=total_pages:
+                    logger.error(f"Page index{p+1} invalid for rotation ")
+                    raise InvalidPDFRangeError(f"Page {p} is out of bonds. Documnet contains {total_pages} pages")
+                current_rotation=doc[p].rotation
+                doc[p].set_rotation((current_rotation + rotation_degree) % 360)
+
+            save_dest=Path(output_path) if output_path else Path(file_path)
+            save_dest.parent.mkdir(parents=True, exist_ok=True)
+
+            if save_dest.resolve() == Path(file_path).resolve():
+                doc.save(save_dest, incremental = True, encryption=fitz.PDF_ENCRYPT_KEEP)
+            else:
+                doc.save(save_dest)
+            logger.info(f"succesfully rotated{len(target_pages)}by {rotation_degree} in {save_dest}")
+        except (
+            InvalidPDFRangeError,
+            PDFCorruptedError,
+            PDFPasswordProtectedError,
+            PDFLoadError,
+            PDFOperationError,
+        ):
+            raise
+        except Exception as e:
+            logger.error(f"Rotation failed: {e}")
+            raise PDFOperationError(f"Failed to rotate pages: {str(e)}")
+        finally:
+            doc.close() 
