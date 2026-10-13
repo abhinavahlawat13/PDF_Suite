@@ -1,5 +1,5 @@
 # PDF Toolkit Pro
-Download Executable :(https://github.com/abhinavahlawat13/Desktop-pdf-suite/releases/latest)
+Download Executable :https://github.com/abhinavahlawat13/PDF_Suite/releases/download/v1.0.0/PDFToolkitPro.exe
 
 A desktop tool to process and edit PDF files locally. Built with Python 3.11, PyMuPDF, and CustomTkinter.
 
