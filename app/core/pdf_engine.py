@@ -1,9 +1,3 @@
-"""Core PDF operations (PyMuPDF). No UI code lives here.
- 
-Public API uses 1-based page numbers (what users see); internally we
-convert to 0-based indexes in exactly one place (_to_indexes).
-"""
- 
 import os
 import tempfile
 from collections.abc import Iterator
@@ -22,14 +16,13 @@ from app.core.exceptions import (
 )
 from app.utils.logger import logger
  
-_SAVE_OPTS = {"garbage": 3, "deflate": True}  # drop unused objects, compress
+_SAVE_OPTS = {"garbage": 3, "deflate": True}  
  
  
 class PDFEngine:
     #  helpers
     @staticmethod
     def _open_pdf(file_path: Path) -> fitz.Document:
-        """Check the file exists, open it, and make sure it is a usable PDF."""
         path = Path(file_path)
         if not path.is_file():
             logger.error(f"File not found: {path}")
@@ -43,14 +36,13 @@ class PDFEngine:
                 f"Cannot open '{path.name}'. The file may be corrupted."
             ) from e
  
-        # fitz also opens images, EPUB, XPS... so verify it is really a PDF.
+        # verifying if file is not an image
         if not doc.is_pdf:
             doc.close()
             logger.error(f"Not a PDF: {path}")
             raise PDFCorruptedError(f"'{path.name}' is not a PDF file.")
  
-        # needs_pass is True only when a password is required to open it.
-        # (is_encrypted is also True for PDFs that open freely.)
+        # identifying if pdf is password protected
         if doc.needs_pass:
             doc.close()
             logger.warning(f"Password-protected PDF: {path}")
@@ -78,7 +70,7 @@ class PDFEngine:
  
     @staticmethod
     def _to_indexes(pages: list[int], total: int) -> list[int]:
-        """Validate 1-based page numbers and return 0-based indexes."""
+        """creating indexes for python to understand"""
         bad = [p for p in pages if not 1 <= p <= total]
         if bad:
             logger.error(f"Pages {bad} out of range (document has {total})")
@@ -89,16 +81,15 @@ class PDFEngine:
  
     @staticmethod
     def _check_output(output_path: Path, *sources: Path) -> Path:
-        """Refuse to write over an input file."""
+        """checking output and input file path conflict"""
         out = Path(output_path)
         if any(out.resolve() == Path(s).resolve() for s in sources):
             raise PDFOperationError("Output file must be different from the input file.")
         return out
  
-    # --------------------------------------------------------------- operations
     @classmethod
     def merge_pdfs(cls, file_paths: list[Path], output_path: Path) -> None:
-        """Merge multiple PDF files into a single PDF."""
+        """Merge multiple PDF files into a single PDF"""
         if len(file_paths) < 2:
             logger.error("Merge failed: fewer than 2 files provided")
             raise PDFOperationError("Select at least 2 files to merge.")
@@ -125,7 +116,7 @@ class PDFEngine:
  
     @classmethod
     def extract_pages(cls, file_path: Path, pages: list[int], output_path: Path) -> None:
-        """Copy the given pages (1-based, in the given order) into a new PDF."""
+        """Copy the given pages into a new PDF"""
         if not pages:
             logger.error("Extraction failed: no pages specified")
             raise PDFOperationError("No pages specified for extraction.")
@@ -135,7 +126,7 @@ class PDFEngine:
         try:
             with cls._pdf(file_path) as doc:
                 indexes = cls._to_indexes(pages, doc.page_count)
-                doc.select(indexes)  # in-memory only; original file untouched
+                doc.select(indexes)  # not touching the original file
                 out.parent.mkdir(parents=True, exist_ok=True)
                 doc.save(out, **_SAVE_OPTS)
             logger.info(f"Extracted {len(pages)} pages into: {out}")
@@ -153,11 +144,7 @@ class PDFEngine:
         pages: list[int] | None = None,
         output_path: Path | None = None,
     ) -> None:
-        """Rotate given pages (1-based) or all pages clockwise by 90/180/270.
- 
-        If output_path is None the original file is replaced, safely: we write
-        a temp file first and only swap it in once saving succeeded.
-        """
+        
         if rotation_degree not in (90, 180, 270):
             logger.error(f"Invalid rotation angle: {rotation_degree}")
             raise PDFOperationError("Rotation angle must be 90, 180, or 270.")
@@ -189,7 +176,7 @@ class PDFEngine:
                     tmp_path = save_to = Path(name)
                 doc.save(save_to, **_SAVE_OPTS)
  
-            # Doc is closed now (required on Windows before replacing the file).
+            # Doc is closed now
             if tmp_path is not None:
                 os.replace(tmp_path, dest)
                 tmp_path = None
@@ -205,7 +192,7 @@ class PDFEngine:
  
     @classmethod
     def delete_pages(cls, file_path: Path, pages: list[int], output_path: Path) -> None:
-        """Save a copy of the PDF with the given pages (1-based) removed."""
+        """Save a copy of the PDF with the given pages (1-based) removed"""
         if not pages:
             logger.error("Delete failed: no pages specified")
             raise PDFOperationError("No pages specified for deletion.")
@@ -220,7 +207,7 @@ class PDFEngine:
                     logger.error("Delete failed: would remove every page")
                     raise PDFOperationError("Cannot delete every page of a PDF.")
  
-                doc.select(keep)  # in-memory only; original file untouched
+                doc.select(keep)  # original file not touched
                 out.parent.mkdir(parents=True, exist_ok=True)
                 doc.save(out, **_SAVE_OPTS)
             logger.info(f"Deleted {len(to_delete)} page(s), saved to: {out}")
@@ -237,11 +224,6 @@ class PDFEngine:
         pages: list[int] | None = None,
         output_path: Path | None = None,
     ) -> str:
-        """Return the text of the given pages (1-based) or of all pages.
- 
-        If output_path is given, the text is also written there as UTF-8.
-        Raises PDFOperationError if no selectable text exists (e.g. scanned PDF).
-        """
         if pages is not None and not pages:
             raise PDFOperationError("No pages specified for text extraction.")
  
@@ -279,7 +261,7 @@ class PDFEngine:
             raise PDFOperationError(f"Failed to extract text: {e}") from e
     @classmethod
     def images_to_pdf(cls, image_paths: list[Path], output_path: Path) -> None:
-        """Convert a list of images (PNG, JPG, JPEG) into a single unified PDF."""
+        """Convert a list of images (PNG, JPG, JPEG) into a single unified PDF"""
         if not image_paths:
             logger.error("Image to PDF failed: no images provided")
             raise PDFOperationError("Select at least one image to convert.")
@@ -325,7 +307,7 @@ class PDFEngine:
         output_path: Path,
         fontsize: int = 36,
     ) -> None:
-        """Add a semi-transparent diagonal text watermark across every page of the PDF."""
+        """Add a semi-transparent diagonal text watermark across every page of the PDF"""
         if not watermark_text.strip():
             logger.error("Watermark failed: empty watermark text")
             raise PDFOperationError("Watermark text cannot be empty.")
@@ -336,10 +318,10 @@ class PDFEngine:
             with cls._pdf(file_path) as doc:
                 for page in doc:
                     rect = page.rect
-                    # Watermark ko center-left se start karne ke liye point
+                    
                     center = fitz.Point(rect.width * 0.2, rect.height * 0.6)
                     
-                    # 45 degree slant ke liye 'morph' use kiya hai (rotate=45 crash karta hai)
+                   
                     page.insert_text(
                         center,
                         watermark_text,
