@@ -1,19 +1,7 @@
-# Virtual environment
-venv/
-.venv/
-env/
-
-# Python cache
-__pycache__/
-*.py[cod]
-
-# PyInstaller builds
-build/
 dist/
+build/
 *.spec
-
-# Logs & config
-*.log
+venv/
+__pycache__/
+*.pyc
 app.log
-.vscode/
-.idea/

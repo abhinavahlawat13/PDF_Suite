@@ -18,7 +18,7 @@ from app.core.exceptions import (
     PDFLoadError,
     PDFOperationError,
     PDFPasswordProtectedError,
-    PDFSuiteException,  # must be the base class of all the exceptions above
+    PDFSuiteException,  
 )
 from app.utils.logger import logger
  
@@ -26,7 +26,7 @@ _SAVE_OPTS = {"garbage": 3, "deflate": True}  # drop unused objects, compress
  
  
 class PDFEngine:
-    # ------------------------------------------------------------------ helpers
+    #  helpers
     @staticmethod
     def _open_pdf(file_path: Path) -> fitz.Document:
         """Check the file exists, open it, and make sure it is a usable PDF."""
@@ -277,4 +277,84 @@ class PDFEngine:
         except Exception as e:
             logger.error(f"Text extraction failed: {e}")
             raise PDFOperationError(f"Failed to extract text: {e}") from e
- 
+    @classmethod
+    def images_to_pdf(cls, image_paths: list[Path], output_path: Path) -> None:
+        """Convert a list of images (PNG, JPG, JPEG) into a single unified PDF."""
+        if not image_paths:
+            logger.error("Image to PDF failed: no images provided")
+            raise PDFOperationError("Select at least one image to convert.")
+
+        out = cls._check_output(output_path, *image_paths)
+        logger.info(f"Converting {len(image_paths)} images to PDF")
+
+        doc = fitz.open()
+        try:
+            for img_path in image_paths:
+                path = Path(img_path)
+                if not path.is_file():
+                    raise PDFOperationError(f"Image not found: {path.name}")
+
+                try:
+                    # Open image, convert to PDF stream, and insert
+                    with fitz.open(path) as img_doc:
+                        pdf_bytes = img_doc.convert_to_pdf()
+                        with fitz.open("pdf", pdf_bytes) as img_pdf:
+                            doc.insert_pdf(img_pdf)
+                except Exception as img_err:
+                    raise PDFOperationError(
+                        f"Failed to process '{path.name}'. File may not be a supported image: {img_err}"
+                    ) from img_err
+
+            out.parent.mkdir(parents=True, exist_ok=True)
+            doc.save(out, **_SAVE_OPTS)
+            logger.info(f"Images converted successfully to: {out.name}")
+
+        except PDFSuiteException:
+            raise
+        except Exception as e:
+            logger.error(f"Image conversion failed: {e}")
+            raise PDFOperationError(f"Cannot convert images to PDF: {e}") from e
+        finally:
+            doc.close()
+
+    @classmethod
+    def add_watermark(
+        cls,
+        file_path: Path,
+        watermark_text: str,
+        output_path: Path,
+        fontsize: int = 36,
+    ) -> None:
+        """Add a semi-transparent diagonal text watermark across every page of the PDF."""
+        if not watermark_text.strip():
+            logger.error("Watermark failed: empty watermark text")
+            raise PDFOperationError("Watermark text cannot be empty.")
+
+        out = cls._check_output(output_path, file_path)
+
+        try:
+            with cls._pdf(file_path) as doc:
+                for page in doc:
+                    rect = page.rect
+                    # Watermark ko center-left se start karne ke liye point
+                    center = fitz.Point(rect.width * 0.2, rect.height * 0.6)
+                    
+                    # 45 degree slant ke liye 'morph' use kiya hai (rotate=45 crash karta hai)
+                    page.insert_text(
+                        center,
+                        watermark_text,
+                        fontsize=fontsize,
+                        color=(0.75, 0.75, 0.75),  # Light gray
+                        morph=(center, fitz.Matrix(-45)),
+                    )
+
+                out.parent.mkdir(parents=True, exist_ok=True)
+                doc.save(out, **_SAVE_OPTS)
+
+            logger.info(f"Watermark applied successfully to: {out.name}")
+
+        except PDFSuiteException:
+            raise
+        except Exception as e:
+            logger.error(f"Watermarking failed: {e}")
+            raise PDFOperationError(f"Failed to apply watermark: {e}") from e
